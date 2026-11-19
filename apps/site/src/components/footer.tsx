@@ -26,10 +26,10 @@ export function Footer({ cookieSettings = false }: { cookieSettings?: boolean })
   return (
     <footer className="px-3 pb-3 pt-20 sm:px-6 md:pt-28">
       <div className="rounded-[28px] bg-ink-navy text-cloud sm:rounded-[40px]">
-        <div className="mx-auto w-full max-w-[1200px] px-5 pb-10 pt-16 sm:px-8 md:pt-20">
+        <div className="mx-auto w-full max-w-[1328px] px-5 pb-10 pt-16 sm:px-8 md:pt-20">
           <div className="grid gap-16 lg:grid-cols-[1fr_1.5fr]">
             <div className="flex flex-col justify-between gap-20">
-              <p className="h-hero max-w-md">Make space for what matters.</p>
+              <p className="h-hero max-w-md">Behind every great plate, great software.</p>
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src="/platterly-logo-white.svg" alt="Platterly" width={150} height={34} className="h-10 w-auto self-start" />
             </div>

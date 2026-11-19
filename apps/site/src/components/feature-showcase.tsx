@@ -6,7 +6,8 @@ import { ArrowUpRight } from "lucide-react";
 import { Icon } from "@/components/icons";
 import { Reveal } from "@/components/reveal";
 import { ProductTile } from "@/components/product-tile";
-import { UiCard, type UiCardName } from "@/components/ui-cards";
+import { ScreenPanel } from "@/components/screen-panel";
+import type { UiCardName } from "@/components/ui-cards";
 import { productVars, type Product } from "@/content/products";
 
 export interface ShowcaseItem {
@@ -21,7 +22,7 @@ export interface ShowcaseItem {
 
 /**
  * Calendly's feature chapter: a small product label, a big heading and a list on one side where one item is open at a
- * time (the others fade back), and a large rounded gradient panel on the other holding the real screen of the open
+ * time (the others fade back; a click or hover opens another, nothing moves by itself), and a large rounded gradient panel on the other holding the real screen of the open
  * item in a white frame. The first item is open in the HTML, so it works without scripts.
  */
 const WAYS = ["sunrise", "blossom", "citrus", "dusk"] as const;
@@ -29,13 +30,8 @@ export function FeatureShowcase({ id, label, product, title, subtitle, items, fl
   const [open, setOpen] = useState(0);
   const base = useId();
   const item = items[open];
-  /** The line under the open item fills over seven seconds and then the next item opens; a click or hover takes over. */
-  function advance() {
-    if (typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    setOpen((v) => (v + 1) % items.length);
-  }
   return (
-    <section aria-labelledby={id} style={productVars(product)} className="mx-auto w-full max-w-[1200px] px-5 py-16 sm:px-8 md:py-24">
+    <section aria-labelledby={id} style={productVars(product)} className="mx-auto w-full max-w-[1328px] px-5 py-16 sm:px-8 md:py-24">
       <div className={`grid gap-10 lg:items-stretch lg:gap-16 ${flip ? "lg:grid-cols-[1fr_1fr]" : "lg:grid-cols-[1fr_1fr]"}`}>
         <Reveal from={flip ? "right" : "left"} className={flip ? "lg:order-2" : ""}>
           <p className="inline-flex items-center gap-2 text-base font-medium">
@@ -51,7 +47,6 @@ export function FeatureShowcase({ id, label, product, title, subtitle, items, fl
               const selected = index === open;
               return (
                 <li key={entry.id} className="relative border-b border-ink-navy/15">
-                  {selected && <span aria-hidden key={`${entry.id}-${open}`} onAnimationEnd={() => advance()} className="fill-line absolute -bottom-px left-0 h-0.5 w-full bg-product" />}
                   <h3>
                     <button
                       type="button"
@@ -78,9 +73,7 @@ export function FeatureShowcase({ id, label, product, title, subtitle, items, fl
                         </span>
                       )}
                     </div>
-                    <div className={`cw-${WAYS[index % WAYS.length]} mt-5 rounded-[28px] p-6 lg:hidden`}>
-                      <UiCard name={entry.card} size="sm" />
-                    </div>
+                    <ScreenPanel name={entry.card} way={WAYS[index % WAYS.length]} className="mt-5 aspect-[4/3] rounded-[28px] lg:hidden" />
                   </div>
                 </li>
               );
@@ -88,10 +81,8 @@ export function FeatureShowcase({ id, label, product, title, subtitle, items, fl
           </ul>
         </Reveal>
         <Reveal from="scale" delay={100} className={`hidden lg:flex ${flip ? "lg:order-1" : ""}`}>
-          <div className={`cw-${WAYS[open % WAYS.length]} relative flex min-h-[34rem] w-full items-center justify-center rounded-[56px] p-12 transition-[background-position] duration-700`}>
-            <div key={item.id} className="tab-swap w-full max-w-[28rem]">
-              <UiCard name={item.card} size="lg" />
-            </div>
+          <div className="w-full">
+            <ScreenPanel key={item.id} name={item.card} way={WAYS[open % WAYS.length]} className="tab-swap h-full min-h-[34rem] w-full rounded-[56px]" />
           </div>
         </Reveal>
       </div>

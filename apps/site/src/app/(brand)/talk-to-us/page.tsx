@@ -25,13 +25,13 @@ export default async function TalkToUsPage() {
       <PageHero eyebrow="Talk to us" title="Let's see how Platterly fits your kitchen">
         <p>Tell us about your catering business. A real person will call you back, show you around and answer your questions.</p>
       </PageHero>
-      <div className="mx-auto grid w-full max-w-[1200px] gap-14 px-5 py-20 sm:px-8 md:py-28 lg:grid-cols-[0.9fr_1.1fr] lg:gap-24">
+      <div className="mx-auto grid w-full max-w-[1328px] gap-14 px-5 py-20 sm:px-8 md:py-28 lg:grid-cols-[0.9fr_1.1fr] lg:gap-24">
         <Reveal from="left">
           <h2 className="h-section">What happens next</h2>
           <ol className="mt-10 flex flex-col gap-8">
             {STEPS.map((step, index) => (
               <li key={step.title} className="flex gap-5">
-                <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-accent text-lg font-medium">{index + 1}</span>
+                <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-badge-fill ring-1 ring-brand/15 text-lg font-medium">{index + 1}</span>
                 <div>
                   <h3 className="text-xl font-medium">{step.title}</h3>
                   <p className="mt-1.5 leading-relaxed text-slate-gray">{step.text}</p>
@@ -39,7 +39,7 @@ export default async function TalkToUsPage() {
               </li>
             ))}
           </ol>
-          <div className="mt-12 rounded-[24px] bg-pebble p-6">
+          <div className="mt-12 rounded-[24px] bg-badge-fill p-6 ring-1 ring-brand/10">
             <p className="text-lg font-medium">Rather start right away?</p>
             <p className="mt-1 text-slate-gray">You can create your account and look around on your own.</p>
             <div className="mt-4">

@@ -151,13 +151,24 @@ test("capture the catering app for the marketing site", async ({ page, browser }
       for (let i = 0; i < 12 && (await popover.locator("span.font-medium").textContent()) !== label; i++) await popover.getByRole("button", { name: "Next month" }).click();
       return { popover, dayName: String(target.getDate()) };
     };
-    await page.getByLabel("Event Date").click();
+    // The click can land before the form is interactive: retry until the calendar is really open.
+    await expect(async () => {
+      if (!(await page.locator('[data-slot="popover-content"]').isVisible())) await page.getByLabel("Event Date").click();
+      await expect(page.locator('[data-slot="popover-content"]')).toBeVisible({ timeout: 2000 });
+    }).toPass({ timeout: 20_000 });
     const from = await picker(spec.start);
-    await from.popover.getByRole("button", { name: from.dayName, exact: true }).click();
-    if (spec.end === undefined || spec.end === spec.start) await from.popover.getByRole("button", { name: from.dayName, exact: true }).click();
+    // The day buttons re-render while the busy-ness lines load, so Playwright's "stable" check can wait forever: click through the page instead.
+    const pickDay = async (popover: ReturnType<Page["locator"]>, dayName: string) => {
+      const button = popover.getByRole("button", { name: dayName, exact: true });
+      await button.waitFor({ state: "attached" });
+      await button.evaluate((el) => (el as HTMLElement).click());
+      await page.waitForTimeout(250);
+    };
+    await pickDay(from.popover, from.dayName);
+    if (spec.end === undefined || spec.end === spec.start) await pickDay(from.popover, from.dayName);
     else {
       const to = await picker(spec.end);
-      await to.popover.getByRole("button", { name: to.dayName, exact: true }).click();
+      await pickDay(to.popover, to.dayName);
     }
     // A date range (or a second meal) switches the order to Multi Order and says so once.
     const gotIt = page.getByRole("alertdialog").getByRole("button", { name: "Got it" });
@@ -288,6 +299,11 @@ test("capture the catering app for the marketing site", async ({ page, browser }
   await shot(page, "calendar");
   await open("/kitchen-dashboard");
   await shot(page, "kitchen");
+  // The Kitchen Dashboard as a list (it opens on List) and the Reports page, for the home page's cards
+  await shot(page, "kitchen-list");
+  await open("/reports");
+  await shot(page, "reports");
+  await open("/kitchen-dashboard");
   await open(`/orders/${ids.A}`);
   await page.getByRole("tab", { name: "Guests & Menu Planning" }).click();
   await shot(page, "menu-planning");
@@ -305,6 +321,7 @@ test("capture the catering app for the marketing site", async ({ page, browser }
   await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
   await shot(page, "logistics");
 
+  if (process.env.CAPTURE_STILLS_ONLY) return; // leave the existing clips alone
   // ---------- 6. Clips (silent, short, looped on the site) ----------
   const record = async (name: string, steps: (p: Page) => Promise<void>) => {
     fs.mkdirSync(RAW, { recursive: true });

@@ -70,7 +70,7 @@ To use a right, or to raise a complaint, write to our grievance contact below. W
 
 ## 7. Cookies
 
-Caterly by Platterly uses only the cookies it needs to work: a session cookie that keeps you signed in (secure and not readable by scripts) and small preference cookies. On this marketing website, we use analytics and marketing cookies, but only if you accept them in the cookie notice; you can change your choice at any time with **Cookie settings** in the footer. We do not use analytics or marketing tools inside Caterly by Platterly. See our [Cookie Policy](/cookie-policy/) for the cookies and how long they last. If this changes, we will update this page and ask for your consent first.
+Caterly by Platterly uses only the cookies it needs to work: a session cookie that keeps you signed in (secure and not readable by scripts) and small preference cookies. On this marketing website, we use analytics and marketing cookies, but only if you accept them in the cookie notice; you can change your choice at any time with **Cookie settings** in the footer. When you visit this website, its header also asks your Platterly Account, in your browser, whether you are signed in, so it can show your initials and your products instead of the sign-up buttons. That uses your existing sign-in cookie, sends nothing to us beyond the request itself, and sets no new cookie. We do not use analytics or marketing tools inside Caterly by Platterly. See our [Cookie Policy](/cookie-policy/) for the cookies and how long they last. If this changes, we will update this page and ask for your consent first.
 
 ## 8. Security
 

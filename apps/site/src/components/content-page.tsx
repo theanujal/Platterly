@@ -42,7 +42,7 @@ export function ContentPage({ page }: { page: PageDoc }) {
         </Reveal>
       </div>
       <section aria-label="Questions" className="mx-auto w-full max-w-[1100px] px-5 pb-24 sm:px-8 md:pb-32">
-        <div className="flex flex-col items-start justify-between gap-6 rounded-[28px] bg-pebble p-8 sm:flex-row sm:items-center sm:p-10">
+        <div className="flex flex-col items-start justify-between gap-6 rounded-[28px] bg-badge-fill ring-1 ring-brand/10 p-8 sm:flex-row sm:items-center sm:p-10">
           <div>
             <p className="h-sub">Questions about this page?</p>
             <p className="mt-2 text-slate-gray">Write to us and a person will reply.</p>

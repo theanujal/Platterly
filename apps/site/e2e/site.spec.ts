@@ -19,8 +19,8 @@ test("home: the headline, the Products menu, and the calls to action", async ({ 
   await expect(page).toHaveTitle(/Platterly/);
   // Sign in and Get Started Free both open the app's sign-in and sign-up screen
   const header = page.getByRole("banner");
-  await expect(header.getByRole("link", { name: "Log in" })).toHaveAttribute("href", APP);
-  await expect(header.getByRole("link", { name: "Get started for free" })).toHaveAttribute("href", APP);
+  await expect(header.getByRole("link", { name: "Contact Sales" })).toHaveAttribute("href", "/talk-to-us/");
+  await expect(header.getByRole("link", { name: "Get Started", exact: true })).toHaveAttribute("href", APP);
   // Products opens a menu with Catering, which goes to the Catering page
   await header.getByRole("button", { name: "Product" }).click();
   await header.getByRole("link", { name: /Caterly by Platterly/ }).click();
@@ -39,7 +39,7 @@ test("existing customers are sent to the Account and the Store: the footer, the 
   await expect(header.getByRole("link", { name: "Your Account" })).toHaveAttribute("href", ACCOUNT);
   await expect(header.getByRole("link", { name: "Store", exact: true })).toHaveAttribute("href", STORE);
   await expect(page.getByRole("link", { name: "Change or renew your plan in the Store" })).toHaveAttribute("href", STORE);
-  await expect(header.getByRole("link", { name: "Get started for free" })).toHaveAttribute("href", APP);
+  await expect(header.getByRole("link", { name: "Get Started", exact: true })).toHaveAttribute("href", APP);
 });
 
 test("catering: every section, the pricing figures and the ten questions", async ({ page }) => {
@@ -64,6 +64,7 @@ test("catering: every section, the pricing figures and the ten questions", async
   await expect(how).toContainText("01 — Add the customer and the event");
   await expect(how).toContainText("05 — Deliver, then get paid");
   await page.getByRole("button", { name: "Next steps" }).click();
+  await expect(how.getByRole("img").first()).toBeVisible(); // the real screens, not drawings
   // pricing as it stands in the product
   const pricing = page.locator("section", { has: page.getByRole("heading", { name: "Simple plans for growing caterers" }) });
   await expect(pricing).toContainText("₹3,000");
@@ -79,18 +80,17 @@ test("catering: every section, the pricing figures and the ten questions", async
   await expect(page.getByRole("link", { name: "Start for free" }).first()).toHaveAttribute("href", APP);
 });
 
-test("the gradient loads, and each feature shows a small designed card, not a whole-page screenshot", async ({ page, request }) => {
+test("the gradient loads, and the product visuals are the real screens, each with a description", async ({ page, request }) => {
   await page.goto("/caterly/");
   await loadLazyImages(page);
   await expect(page.locator("#final").locator("xpath=ancestor::section").locator("img")).toHaveCount(0);
   expect((await request.get("/media/gradient.webp")).ok()).toBe(true);
-  // the product visuals are designed cards (title plus a few rows), with no browser screenshots left in the page
-  await expect(page.locator("main img[src*='/media/'][src*='orders'], main img[src*='dashboard']")).toHaveCount(0);
-  await page.goto("/caterly/");
+  // the feature chapter shows a real Caterly screen in a coloured panel, with alt text saying which one
   const chapter = page.locator("section", { has: page.locator("#features-title") });
   await chapter.scrollIntoViewIfNeeded();
-  await expect(chapter.getByText("October").locator("visible=true").first()).toBeVisible();
-  await expect(page.locator("main img[src*='/media/dashboard'], main img[src*='/media/orders']")).toHaveCount(0);
+  await expect(chapter.getByRole("img", { name: /Calendar page in Caterly/ }).locator("visible=true").first()).toBeVisible();
+  // every picture of a screen in the page has alt text
+  expect(await page.locator("main img[src*='/media/']:not([alt])").count()).toBe(0);
 });
 
 test("the policies, About and the new pages are in the footer and each has one heading", async ({ page }) => {
@@ -174,7 +174,8 @@ test.describe("on a phone", () => {
     await page.getByRole("button", { name: "Open menu" }).click();
     const mobile = page.locator("#mobile-menu");
     await expect(mobile.getByRole("link", { name: "Caterly by Platterly" })).toBeVisible();
-    await expect(mobile.getByRole("link", { name: "Get started for free" })).toHaveAttribute("href", APP);
+    await expect(mobile.getByRole("link", { name: "Get Started", exact: true })).toHaveAttribute("href", APP);
+    await expect(mobile.getByRole("link", { name: "Contact Sales" })).toHaveAttribute("href", "/talk-to-us/");
     await mobile.getByRole("link", { name: "About Platterly" }).click();
     await expect(page).toHaveURL(/\/about\/$/);
     await expect(page.locator("#mobile-menu")).toHaveCount(0); // closes on navigation
@@ -283,12 +284,12 @@ test("the announcement bar shows the notice, closes, and stays closed on every p
   await expect(bar).toHaveCount(0);
 });
 
-test("choosing Catering from the Product menu loads the page at the top, from the top bar and from the floating bar", async ({ page }) => {
+test("choosing Catering from the Product menu loads the page at the top, at the top of the page and further down", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   for (const scroll of [0, 3000]) {
     await page.goto("/");
     await page.evaluate((y) => window.scrollTo({ top: y, behavior: "instant" }), scroll);
-    const bar = scroll ? page.locator(".floating-nav") : page.getByRole("banner");
+    const bar = page.getByRole("banner");
     await bar.getByRole("button", { name: "Product" }).hover();
     await bar.getByRole("link", { name: /Caterly by Platterly/ }).click();
     await expect(page).toHaveURL(/\/caterly\/$/);
@@ -314,9 +315,9 @@ test("Calendly's look: midnight buttons, one palette on every page, and the prod
   const token = (locator: ReturnType<Page["locator"]>, name: string) => locator.evaluate((el, n) => getComputedStyle(el).getPropertyValue(n).trim(), name);
   await page.goto("/");
   const header = page.getByRole("banner");
-  await expect(header.getByRole("link", { name: "Get started for free" })).toHaveCSS("background-color", MIDNIGHT);
+  await expect(header.getByRole("link", { name: "Get Started", exact: true })).toHaveCSS("background-color", MIDNIGHT);
   await expect(page.getByRole("main").getByRole("link", { name: "Get started for free" }).first()).toHaveCSS("background-color", MIDNIGHT);
-  await expect(header.getByRole("link", { name: "Get started for free" })).toHaveCSS("border-radius", "8px");
+  expect(await header.getByRole("link", { name: "Get Started", exact: true }).evaluate((el) => parseFloat(getComputedStyle(el).borderTopLeftRadius))).toBeGreaterThan(100); // a full pill, not the 8px corners of the page buttons
   await expect(page.getByRole("heading", { level: 1 })).toHaveCSS("font-size", "72px");
   await expect(page.getByRole("heading", { level: 1 })).toHaveCSS("font-weight", "500");
   expect(await page.evaluate(() => getComputedStyle(document.body).backgroundColor)).toBe("rgb(252, 251, 248)");
@@ -333,17 +334,17 @@ test("Calendly's look: midnight buttons, one palette on every page, and the prod
   await expect(page.getByRole("button", { name: "Request a call" })).toHaveCSS("background-color", MIDNIGHT);
 });
 
-test("width: the panels and the footer fill the screen, 24px in from each edge, at any width", async ({ page }) => {
+test("width: the gradient runs edge to edge, the footer is 24px in from each edge, and the pill is centred, at any width", async ({ page }) => {
   for (const width of [1440, 1920]) {
     await page.setViewportSize({ width, height: 1000 });
     await page.goto("/");
     const panel = await page.locator('section[aria-labelledby="hero"] > div').boundingBox();
-    expect(Math.round(panel!.x), `panel left at ${width}`).toBe(24);
-    expect(Math.round(panel!.width), `panel width at ${width}`).toBe(width - 48);
+    expect(Math.round(panel!.x), `gradient left at ${width}`).toBe(0);
+    expect(Math.round(panel!.width), `gradient width at ${width}`).toBe(width);
     const footer = await page.getByRole("contentinfo").locator("> div").boundingBox();
     expect(Math.round(footer!.width), `footer width at ${width}`).toBe(width - 48);
-    const logo = await page.getByRole("banner").getByRole("link", { name: "Platterly home" }).boundingBox();
-    expect(Math.round(logo!.x), `logo left at ${width}`).toBe(48);
+    const pill = await page.getByRole("banner").locator("> div").first().boundingBox();
+    expect(Math.abs(pill!.x + pill!.width / 2 - width / 2), `pill centre at ${width}`).toBeLessThan(2);
   }
 });
 
@@ -360,92 +361,87 @@ test("menu: Product and Resources only, with Discover and Support inside Resourc
   await expect(header.getByRole("link", { name: "Blog" })).toHaveAttribute("href", "/blog/");
 });
 
-test("header: the page's own bar scrolls away and a floating bar takes over once you have scrolled", async ({ page }) => {
+test("header: one white pill floats over the top of the hero and stays in view as the page scrolls", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/about/");
   const bar = page.getByRole("banner");
-  await expect(bar).toHaveCSS("position", "relative");
-  const floating = page.locator(".floating-nav");
-  await expect(floating).toHaveCSS("opacity", "0");
-  await page.evaluate(() => window.scrollTo({ top: 600, behavior: "instant" }));
-  await expect(floating).toHaveCSS("opacity", "1");
-  const box = await floating.locator("> div").boundingBox();
-  expect(Math.round(box!.y)).toBe(24);
-  expect(Math.round(box!.x)).toBe(48);
-  expect(Math.round(box!.height)).toBe(72);
-  await expect(floating.getByRole("link", { name: "Get started for free" })).toHaveCSS("background-color", "rgb(7, 26, 49)");
+  const pill = bar.locator("> div").first();
+  const before = await pill.boundingBox();
+  expect(before!.height).toBe(56);
+  expect(before!.width).toBeLessThanOrEqual(920);
+  expect(Math.abs(before!.x + before!.width / 2 - 720)).toBeLessThan(2); // centred
+  expect(await pill.evaluate((el) => parseFloat(getComputedStyle(el).borderTopLeftRadius))).toBeGreaterThan(100); // fully rounded
+  await expect(page.locator(".floating-nav")).toHaveCount(0); // no second bar
+  // the hero starts at the very top: the pill sits on the gradient and takes no room of its own
+  const hero = await page.locator("#page-title").locator("xpath=..").boundingBox();
+  expect(hero!.y).toBeLessThanOrEqual(before!.y);
+  await page.evaluate(() => window.scrollTo({ top: 1200, behavior: "instant" }));
+  const after = await pill.boundingBox();
+  expect(Math.round(after!.y)).toBe(16);
+  await expect(bar.getByRole("link", { name: "Get Started", exact: true })).toHaveCSS("background-color", "rgb(7, 26, 49)");
 });
 
-test("the product scene is one card: it grows to fill the screen, pins, says what Catering is, and lets go", async ({ page }) => {
+test("the product card sits on the hero gradient, does not pin or grow, and says what Catering is", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/");
-  const scene = page.locator(".scene-pinned");
-  await expect(scene).toBeVisible();
-  await expect(page.locator(".scene-static")).toBeHidden();
-  const height = await scene.evaluate((el) => (el as HTMLElement).offsetHeight);
-  expect(height).toBeGreaterThan(1200);
-  expect(height).toBeLessThan(1600); // one card: a short hold, not a long walk through steps
-  await page.evaluate(() => {
-    const el = document.querySelector(".scene-pinned")!;
-    window.scrollTo({ top: el.getBoundingClientRect().top + window.scrollY - 24 + 40, behavior: "instant" });
-  });
-  await expect(page.locator("html")).toHaveAttribute("data-pinned", "true");
-  await expect(scene.getByRole("heading", { name: "Run your catering business from one place." })).toBeVisible();
+  const card = page.getByRole("group", { name: "Products" }).locator("xpath=..");
+  await expect(card.getByRole("heading", { name: "Run your catering business from one place." })).toBeVisible();
   // no steps: no step names, no tabs
-  for (const step of ["Orders", "Menu planning", "Kitchen", "Payments"]) await expect(scene.getByRole("button", { name: step })).toHaveCount(0);
+  for (const step of ["Orders", "Menu planning", "Kitchen", "Payments"]) await expect(card.getByRole("button", { name: step })).toHaveCount(0);
   await expect(page.getByRole("tablist")).toHaveCount(0);
   // the Catering icon is Caterly's own logo; the card links to the product page
-  await expect(scene.getByRole("group", { name: "Products" }).locator("img[src='/caterly-mark.png']").first()).toBeVisible();
-  await expect(scene.getByRole("link", { name: /Learn more/ })).toHaveAttribute("href", "/caterly/");
-  // the floating bar steps aside while it is pinned
-  await expect(page.locator(".floating-nav")).toHaveCSS("opacity", "0");
-  // scrolling on lets go of it
-  await page.evaluate(() => window.scrollBy({ top: window.innerHeight * 1.2, behavior: "instant" }));
-  await expect(page.locator("html")).toHaveAttribute("data-pinned", "false");
-});
-
-test("without motion the same card shows in a plain panel, with no pinning", async ({ browser }) => {
-  const context = await browser.newContext({ reducedMotion: "reduce", viewport: { width: 1440, height: 900 } });
-  const page = await context.newPage();
-  await page.goto("/");
-  await expect(page.locator(".scene-pinned")).toBeHidden();
-  await expect(page.locator(".scene-static").getByRole("heading", { name: "Run your catering business from one place." })).toBeVisible();
+  await expect(card.getByRole("group", { name: "Products" }).locator("img[src='/caterly-mark.png']").first()).toBeVisible();
+  await expect(card.getByRole("link", { name: /Learn more/ })).toHaveAttribute("href", "/caterly/");
+  // nothing pins: the page's own scroll position is the only thing that moves it
+  await expect(page.locator(".scene-pinned")).toHaveCount(0);
+  await page.evaluate(() => window.scrollTo({ top: 500, behavior: "instant" }));
   await expect(page.locator("html")).not.toHaveAttribute("data-pinned", "true");
-  await context.close();
 });
 
-test("the three step cards are an accordion: hover one and it widens while the others fold back", async ({ page }) => {
+test("the three step cards are equal, and every card shows its text without hovering", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/");
   const cards = page.locator("ol.mt-14 > li");
   await cards.first().scrollIntoViewIfNeeded();
-  const widths = async () => Promise.all((await cards.all()).map(async (c) => Math.round((await c.boundingBox())!.width)));
-  await expect.poll(async () => (await widths())[0]).toBeGreaterThan((await widths())[1]);
-  const before = await widths();
-  await cards.nth(2).hover();
-  await expect.poll(async () => (await widths())[2]).toBeGreaterThan(before[2] + 60);
-  const after = await widths();
-  expect(after[0]).toBeLessThan(before[0]);
-  expect(after[2]).toBeGreaterThan(after[1]);
-  // regression: a card must stay visible after the hover re-renders it (its "revealed" class used to be wiped)
+  await expect(cards).toHaveCount(3);
+  const boxes = await Promise.all((await cards.all()).map((c) => c.boundingBox()));
+  expect(Math.abs(boxes[0]!.width - boxes[1]!.width)).toBeLessThan(2);
+  expect(Math.abs(boxes[1]!.width - boxes[2]!.width)).toBeLessThan(2);
+  expect(Math.abs(boxes[0]!.height - boxes[2]!.height)).toBeLessThan(2);
   for (const card of await cards.all()) await expect(card).toHaveCSS("opacity", "1");
-  await expect(cards.nth(2).getByText("Reports on sales and events")).toBeVisible();
-  await cards.nth(0).hover();
-  await expect.poll(async () => (await widths())[0]).toBeGreaterThan(after[0] + 60);
-  for (const card of await cards.all()) await expect(card).toHaveCSS("opacity", "1");
+  for (const text of ["Keep every enquiry, customer and event together", "Plan the menu, run the kitchen", "Know what is booked"]) await expect(page.getByText(text)).toBeVisible();
 });
 
-test("home: a chapter dedicated to Catering, with arrows to the product page and a product tile", async ({ page }) => {
+test("home: a plain chapter about Catering: the list, one picture, a button to the product page and a product tile", async ({ page }) => {
   await page.goto("/");
   const chapter = page.locator("section", { has: page.locator("#catering-chapter") });
   await chapter.scrollIntoViewIfNeeded();
   await expect(chapter.getByRole("heading", { name: "Meet Caterly by Platterly." })).toBeVisible();
   await expect(chapter.getByText("Caterly by Platterly").first()).toBeVisible();
-  await expect(chapter.getByRole("link", { name: /Learn more about/ }).first()).toHaveAttribute("href", /\/caterly\//);
+  await expect(chapter.getByRole("link", { name: "Explore Caterly" })).toHaveAttribute("href", /\/caterly\//);
+  await expect(chapter.getByRole("img")).toHaveCount(1); // the one screen (the product tile beside the label has no alt text: it is decoration)
+  for (const text of ["Events and calendar", "Menus customers approve", "A board for the kitchen", "Payments and invoices"]) await expect(chapter.getByText(text, { exact: true })).toBeVisible();
   await expect(chapter.locator("img[src='/caterly-mark.png']").first()).toBeVisible();
-  // one item is open at a time
-  await chapter.getByRole("button", { name: "Payments and invoices" }).click();
-  await expect(chapter.getByRole("button", { name: "Payments and invoices" })).toHaveAttribute("aria-expanded", "true");
-  await expect(chapter.getByRole("button", { name: "Events and calendar" })).toHaveAttribute("aria-expanded", "false");
+  await expect(chapter.getByRole("button")).toHaveCount(0); // nothing opens or slides
+});
+
+test("home: a blog band shows the three newest posts and links to the blog", async ({ page }) => {
+  await page.goto("/");
+  const band = page.locator("section", { has: page.locator("#blog") });
+  await band.scrollIntoViewIfNeeded();
+  await expect(band.getByRole("heading", { name: "Short reads for busy caterers" })).toBeVisible();
+  await expect(band.locator("ul > li")).toHaveCount(3);
+  await expect(band.locator("ul > li a").first()).toHaveAttribute("href", /\/blog\/.+\//);
+  await expect(band.getByRole("link", { name: "View all posts" })).toHaveAttribute("href", "/blog/");
+});
+
+test("home: a trust strip with four facts and a link to the Security page", async ({ page }) => {
+  await page.goto("/");
+  const band = page.locator("section", { has: page.locator("#trust") });
+  await band.scrollIntoViewIfNeeded();
+  await expect(band.getByRole("heading", { name: "Your kitchen's data, kept safe" })).toBeVisible();
+  await expect(band.locator("ul > li")).toHaveCount(4);
+  await expect(band.getByRole("link", { name: /How we keep it safe/ })).toHaveAttribute("href", "/security/");
 });
 
 test("the Catering closing band is just the heading, copy and its two buttons", async ({ page }) => {
@@ -482,7 +478,7 @@ test("the Catering feature list opens one feature at a time with its real screen
   await expect(section.getByRole("button", { name: "Payments" })).toHaveAttribute("aria-expanded", "true");
   await expect(events).toHaveAttribute("aria-expanded", "false");
   await expect(section.getByText("Track payment status and outstanding amounts.")).toBeVisible();
-  await expect(section.getByText("Create invoice").locator("visible=true").first()).toBeVisible(); // its own small card, not a screenshot
+  await expect(section.getByRole("img", { name: /Payments in Caterly/ }).locator("visible=true").first()).toBeVisible(); // the real Payments screen
 });
 
 test("motion: sections reveal on scroll, and reduced motion or no scripts show everything at once", async ({ page, browser }) => {
@@ -512,16 +508,16 @@ test("home: the platform band shows what is live and what is next, and only Cate
   const band = page.locator("section[aria-labelledby=platform]");
   await band.scrollIntoViewIfNeeded();
   await expect(band.getByRole("heading", { name: /Caterly is where we start/ })).toBeVisible();
-  const cards = band.locator("article");
+  const cards = band.locator("ul.md\\:grid-cols-3 > li");
   await expect(cards).toHaveCount(3);
   await expect(cards.first()).toContainText("Live now");
   await expect(cards.first().getByRole("link", { name: /Explore Caterly/ })).toHaveAttribute("href", /\/caterly\//);
   await expect(cards.nth(1)).toContainText("Rivo");
   await expect(cards.nth(1)).toContainText("Coming soon");
-  await expect(band.locator("article a")).toHaveCount(1);
-  const dots = band.getByRole("group", { name: "Choose a product" }).getByRole("button");
-  await dots.nth(1).click();
-  await expect(dots.nth(1)).toHaveAttribute("aria-current", "true");
+  await expect(cards.nth(2)).toContainText("Coming soon");
+  // only Catering links anywhere: the card's arrow and the "Explore Caterly" link under the heading
+  await expect(cards.locator("a")).toHaveCount(1);
+  await expect(band.getByRole("button")).toHaveCount(0); // nothing slides or opens
 });
 
 test("with no analytics script from Ops, there is no cookie notice and no Cookie settings link", async ({ page }) => {

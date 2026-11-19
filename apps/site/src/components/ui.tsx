@@ -36,24 +36,25 @@ export function ButtonLink({ href, variant = "primary", children, className = ""
 
 /** A quiet label: Midnight on a Midnight tint. */
 export function Badge({ children }: { children: ReactNode }) {
-  return <span className="inline-flex items-center rounded-full bg-ink-navy/5 px-3 py-1 text-xs font-medium text-ink-navy">{children}</span>;
+  return <span className="inline-flex items-center rounded-full bg-badge-fill ring-1 ring-brand/15 px-3 py-1 text-xs font-medium text-ink-navy">{children}</span>;
 }
 
-/** A page section on the magnolia page: max 1200px, generous air above and below. */
+/** A page section on the magnolia page: max 1328px, generous air above and below. */
 export function Section({ children, className = "", label }: { children: ReactNode; className?: string; tone?: "canvas" | "paper" | "navy"; label?: string }) {
   return (
     <section aria-labelledby={label} className={className}>
-      <div className="mx-auto w-full max-w-[1200px] px-5 py-14 sm:px-8 md:py-20">{children}</div>
+      <div className="mx-auto w-full max-w-[1328px] px-5 py-14 sm:px-8 md:py-20">{children}</div>
     </section>
   );
 }
 
 /** One of Calendly's big rounded panels, inset from the page edge: linen by default. */
-export function Panel({ children, className = "", tone = "linen", id, label }: { children: ReactNode; className?: string; tone?: "linen" | "tint" | "dark"; id?: string; label?: string }) {
-  const bg = tone === "dark" ? "bg-ink-navy text-cloud" : tone === "tint" ? "bg-badge-fill" : "bg-pebble";
+export function Panel({ children, className = "", tone = "linen", id, label }: { children: ReactNode; className?: string; tone?: "linen" | "tint" | "dark" | "aurora" | "none"; id?: string; label?: string }) {
+  const bg = tone === "dark" ? "bg-ink-navy text-cloud" : tone === "tint" ? "bg-badge-fill" : tone === "aurora" || tone === "none" ? "" : "bg-badge-fill";
+  const full = tone === "aurora"; // the gradient runs edge to edge: no inset, no rounded corners
   return (
-    <section id={id} aria-labelledby={label} className="px-3 sm:px-6">
-      <div className={`rounded-[28px] sm:rounded-[40px] ${bg} ${className}`}>{children}</div>
+    <section id={id} aria-labelledby={label} className={full ? "" : "px-3 sm:px-6"}>
+      <div className={`${full ? "" : "rounded-[28px] sm:rounded-[40px]"} ${bg} ${className}`} style={tone === "aurora" ? { background: "var(--aurora)" } : undefined}>{children}</div>
     </section>
   );
 }

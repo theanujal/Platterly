@@ -12,5 +12,5 @@ export default defineConfig({
   workers: 1,
   timeout: 15 * 60_000,
   reporter: [["list"]],
-  use: { baseURL: process.env.PW_BASE_URL ?? "http://catering.localhost:3000", viewport: { width: 1280, height: 800 }, deviceScaleFactor: 2, colorScheme: "light" },
+  use: { actionTimeout: 30_000, baseURL: process.env.PW_BASE_URL ?? "http://catering.localhost:3000", viewport: { width: 1280, height: 800 }, deviceScaleFactor: 2, colorScheme: "light" },
 });

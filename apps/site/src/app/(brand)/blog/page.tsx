@@ -18,7 +18,7 @@ export default async function BlogPage() {
       <PageHero eyebrow="Blog" title="Ideas for running a catering business">
         <p>Practical, short reads on planning events, working with the kitchen and getting paid.</p>
       </PageHero>
-      <div className="mx-auto w-full max-w-[1200px] px-5 py-20 sm:px-8 md:py-28">
+      <div className="mx-auto w-full max-w-[1328px] px-5 py-20 sm:px-8 md:py-28">
         <BlogList posts={posts} />
       </div>
     </>

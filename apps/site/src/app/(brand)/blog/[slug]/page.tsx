@@ -60,8 +60,8 @@ export default async function PostPage({ params }: { params: Promise<{ slug: str
       <JsonLd data={ld} />
       <JsonLd data={breadcrumbs} />
       <article>
-        <header className="px-3 sm:px-6">
-          <div className={`cw-${post.colourway} rounded-[28px] px-5 py-16 sm:rounded-[40px] md:py-24`}>
+        <header>
+          <div className={`cw-${post.colourway} px-5 pb-16 pt-32 md:pb-24 md:pt-40`}>
             <div className="mx-auto max-w-3xl">
               <Link href="/blog/" className="inline-flex items-center gap-2 text-sm font-medium hover:underline">
                 <ArrowLeft className="size-4" aria-hidden /> All posts
@@ -82,7 +82,7 @@ export default async function PostPage({ params }: { params: Promise<{ slug: str
         </Reveal>
       </article>
       <section aria-label="Try Caterly by Platterly" className="mx-auto w-full max-w-3xl px-5 sm:px-8">
-        <div className="flex flex-col items-start justify-between gap-6 rounded-[28px] bg-pebble p-8 sm:flex-row sm:items-center sm:p-10">
+        <div className="flex flex-col items-start justify-between gap-6 rounded-[28px] bg-badge-fill ring-1 ring-brand/10 p-8 sm:flex-row sm:items-center sm:p-10">
           <div>
             <p className="h-sub">Run your next event in one place</p>
             <p className="mt-2 text-slate-gray">Seven days free, no card needed.</p>
@@ -91,7 +91,7 @@ export default async function PostPage({ params }: { params: Promise<{ slug: str
         </div>
       </section>
       {related.length > 0 && (
-        <section aria-labelledby="more" className="mx-auto w-full max-w-[1100px] px-5 py-24 sm:px-8 md:py-32">
+        <section aria-labelledby="more" className="mx-auto w-full max-w-[1328px] px-5 py-24 sm:px-8 md:py-32">
           <h2 id="more" className="h-sub">
             Keep reading
           </h2>

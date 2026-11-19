@@ -21,7 +21,7 @@ export default async function WhatsNewPage() {
       <PageHero eyebrow="What's new" title="What we have shipped">
         <p>Every improvement to Caterly by Platterly, newest first. Only things that are live today.</p>
       </PageHero>
-      <div className="mx-auto w-full max-w-[900px] px-5 py-20 sm:px-8 md:py-28">
+      <div className="mx-auto w-full max-w-[1328px] px-5 py-20 sm:px-8 md:py-28">
         {months.map((m) => (
           <section key={m} aria-label={m} className="mb-16 last:mb-0">
             <h2 className="h-sub mb-8 border-b border-ink-navy/15 pb-4">{m}</h2>
@@ -30,13 +30,13 @@ export default async function WhatsNewPage() {
                 .filter((r) => month(r.date) === m)
                 .map((r, i) => (
                   <Reveal as="li" key={r.id} delay={i * 50}>
-                    <article className="grid gap-4 rounded-[24px] bg-paper p-7 shadow-card sm:grid-cols-[9rem_1fr] sm:gap-8">
+                    <article className="grid gap-4 rounded-[24px] bg-paper p-7 shadow-product ring-1 ring-ink-navy/5 sm:grid-cols-[9rem_1fr] sm:gap-8">
                       <p className="text-sm text-slate-gray">
                         <time dateTime={r.date}>{formatDate(r.date)}</time>
-                        <span className={`mt-3 block w-fit rounded-full px-3 py-1 text-xs font-medium ${r.kind === "new" ? "bg-accent" : "bg-sky"}`}>{r.kind === "new" ? "New" : "Improved"}</span>
+                        <span className={`mt-3 block w-fit rounded-full px-3 py-1 text-xs font-medium ${r.kind === "new" ? "bg-sky" : "bg-badge-fill ring-1 ring-brand/15"}`}>{r.kind === "new" ? "New" : "Improved"}</span>
                       </p>
                       <div>
-                        <h3 className="text-xl font-medium">{r.title}</h3>
+                        <h3 className="h-sub !text-[1.5rem]">{r.title}</h3>
                         <div className="prose-legal mt-2">
                           <Markdown>{r.body}</Markdown>
                         </div>

@@ -1,122 +1,78 @@
-"use client";
-
 import Link from "next/link";
-import { useEffect, useState, useSyncExternalStore, type ReactNode } from "react";
-import { ArrowRight, Star } from "lucide-react";
+import { ArrowRight, Layers, Plus, Star } from "lucide-react";
 import { Icon } from "@/components/icons";
 import { Reveal } from "@/components/reveal";
-import { PLATFORM } from "@/content/platform";
+import { ButtonLinkInline } from "@/components/platform-link";
+import { PLATFORM, type PlatformCard } from "@/content/platform";
 
-const GAP = 32;
-
-function subscribeMotion(onChange: () => void) {
-  const query = window.matchMedia("(prefers-reduced-motion: reduce)");
-  query.addEventListener("change", onChange);
-  return () => query.removeEventListener("change", onChange);
+/** The mark for one product: Caterly's own logo, a star for Rivo, a stack for what is not named yet. */
+function Mark({ card, size }: { card: PlatformCard; size: "tile" | "small" }) {
+  const box = size === "tile" ? "size-7" : "size-9";
+  if (card.id === "catering")
+    // eslint-disable-next-line @next/next/no-img-element
+    return <img src="/caterly-mark.png" alt="" width={96} height={96} className={`${box} rounded-lg`} />;
+  if (card.icon === "star") return <Star className={`${size === "tile" ? "size-6" : "size-6"} text-brand`} strokeWidth={1.75} aria-hidden />;
+  if (card.icon === "layers") return <Layers className={`${size === "tile" ? "size-6" : "size-6"} text-ink-navy`} strokeWidth={1.75} aria-hidden />;
+  return <Icon name={card.icon} className="size-7 text-brand" />;
 }
-const motionReduced = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 /**
- * The home page's closing band: where Platterly is today and what is next. The same warm aurora as the Catering page's
- * closing band, a two-tone heading and one button, then a row of product cards (one live, the rest coming soon) with
- * the open one in the middle and its neighbours smaller and fading in from the sides. It moves on every five seconds
- * (not for people who ask for less motion, nor while the pointer or focus is on it); the dots, arrow keys, swipe and a
- * click on a neighbour move it too.
+ * The home page's platform section, after calendly.com's integrations band: a label, a big heading, one line and a link,
+ * a row of rounded tiles (one for each product, then empty places for the ones still to come),
+ * and a card for each product. Only the live product links anywhere. Nothing moves by itself.
  */
-export function PlatformBand({ children }: { children: ReactNode }) {
-  const [index, setIndex] = useState(0);
-  const [paused, setPaused] = useState(false);
-  const [touchX, setTouchX] = useState<number | null>(null);
-  const still = useSyncExternalStore(subscribeMotion, motionReduced, () => false);
-  const last = PLATFORM.cards.length - 1;
-  const halted = paused || still;
-
-  useEffect(() => {
-    if (halted) return;
-    const timer = window.setTimeout(() => setIndex((v) => (v === last ? 0 : v + 1)), 5000);
-    return () => window.clearTimeout(timer);
-  }, [index, halted, last]);
-
+export function PlatformBand() {
+  const tiles = [...PLATFORM.cards, null, null];
   return (
-    <section aria-labelledby="platform" className="relative mt-24 overflow-x-clip rounded-t-[40px] pb-24 pt-20 md:mt-36 md:rounded-t-[56px] md:pb-32 md:pt-28" style={{ background: "var(--band-bg)" }}>
-      <Reveal className="mx-auto flex max-w-3xl flex-col items-center gap-5 px-5 text-center">
+    <section aria-labelledby="platform" className="mx-auto w-full max-w-[1328px] px-5 py-16 sm:px-8 md:py-24">
+      <Reveal className="mx-auto flex max-w-3xl flex-col items-center gap-5 text-center">
         <p className="eyebrow">{PLATFORM.eyebrow}</p>
         <h2 id="platform" className="h-section">
-          {PLATFORM.title} <span className="block text-brand">{PLATFORM.accent}</span>
+          {PLATFORM.title} {PLATFORM.accent}
         </h2>
-        <div className="flex flex-col items-center gap-6 text-lg leading-relaxed sm:text-xl">{children}</div>
+        <p className="text-lg leading-relaxed text-slate-gray sm:text-xl">{PLATFORM.copy}</p>
+        <ButtonLinkInline href="/caterly/">Explore Caterly</ButtonLinkInline>
       </Reveal>
 
-      <div
-        role="group"
-        aria-roledescription="carousel"
-        aria-label="Platterly products"
-        tabIndex={0}
-        onMouseEnter={() => setPaused(true)}
-        onMouseLeave={() => setPaused(false)}
-        onFocus={() => setPaused(true)}
-        onBlur={() => setPaused(false)}
-        onTouchStart={(e) => setTouchX(e.touches[0].clientX)}
-        onTouchEnd={(e) => {
-          if (touchX === null) return;
-          const dx = e.changedTouches[0].clientX - touchX;
-          setTouchX(null);
-          if (Math.abs(dx) > 48) setIndex((v) => (dx < 0 ? Math.min(last, v + 1) : Math.max(0, v - 1)));
-        }}
-        onKeyDown={(e) => {
-          if (e.key === "ArrowRight") setIndex((v) => Math.min(last, v + 1));
-          if (e.key === "ArrowLeft") setIndex((v) => Math.max(0, v - 1));
-        }}
-        className="relative mt-16 touch-pan-y outline-none focus-visible:ring-2 focus-visible:ring-ink-navy md:mt-20"
-        style={{ ["--cw" as string]: "min(620px, 82vw)" }}
-      >
-        <div className="relative left-1/2 flex w-max items-stretch transition-transform duration-700 ease-calendly" style={{ gap: GAP, transform: `translateX(calc(${index} * (var(--cw) + ${GAP}px) * -1 - var(--cw) / 2))` }}>
-          {PLATFORM.cards.map((card, i) => {
-            const on = i === index;
-            const live = card.status === "live";
-            return (
-              <article
-                key={card.id}
-                aria-roledescription="slide"
-                aria-label={`${i + 1} of ${PLATFORM.cards.length}: ${card.name}`}
-                onClick={() => setIndex(i)}
-                className={`relative flex shrink-0 cursor-pointer overflow-hidden rounded-[32px] bg-paper/80 shadow-card backdrop-blur transition duration-700 ease-calendly sm:rounded-[40px] ${on ? "scale-100" : "scale-[0.88] opacity-60"}`}
-                style={{ width: "var(--cw)" }}
-              >
-                <div className="relative z-10 flex flex-1 flex-col items-start gap-4 p-7 sm:p-9">
-                  <span className="flex size-14 items-center justify-center rounded-2xl bg-paper shadow-product">
-                    {card.icon === "star" ? <Star className="size-7 text-brand" strokeWidth={1.75} aria-hidden /> : <Icon name={card.icon} className="size-7 text-brand" />}
-                  </span>
-                  <h3 className="h-sub !text-[1.75rem]">{card.name}</h3>
-                  <p className="max-w-[15rem] text-base sm:max-w-[18rem] leading-relaxed text-slate-gray">{card.text}</p>
-                  {live && card.href ? (
-                    <Link href={card.href} tabIndex={on ? 0 : -1} className="mt-auto inline-flex items-center gap-2 text-base font-medium text-brand">
-                      Explore Caterly <ArrowRight className="size-5" aria-hidden />
-                    </Link>
-                  ) : (
-                    <span className="mt-auto inline-flex rounded-full bg-ink-navy/5 px-3.5 py-1.5 text-sm font-medium text-ink-navy">Coming soon</span>
-                  )}
-                </div>
-                <div aria-hidden className={`cw-${card.colourway} absolute inset-y-0 right-0 w-[24%] rounded-l-[40px] opacity-90 sm:w-[40%] sm:rounded-l-[48px]`}>
-                  <div className="bars absolute inset-x-0 top-[22%] h-[56%] opacity-40" />
-                </div>
-                {live && <span className="absolute right-5 top-5 z-10 rounded-full bg-paper px-3 py-1 text-sm font-medium shadow-card">Live now</span>}
-              </article>
-            );
-          })}
-        </div>
-      </div>
+      <Reveal delay={80} className="mt-14 md:mt-16">
+        <ul aria-label="Platterly products" className="flex flex-wrap items-center justify-center gap-y-3">
+          {tiles.map((card, i) => (
+            <li key={card?.id ?? `empty-${i}`} className="flex items-center">
+              {i > 0 && <span aria-hidden className="h-0.5 w-4 bg-brand/25 sm:w-6" />}
+              <span className={`flex size-10 items-center justify-center rounded-xl sm:size-11 sm:rounded-[14px] ${card ? "bg-badge-fill ring-1 ring-brand/10" : "border-2 border-dashed border-ink-navy/20 text-ink-navy/40"}`} title={card ? card.name : "More products are on the way"}>
+                {card ? <Mark card={card} size="tile" /> : <Plus className="size-4" aria-hidden />}
+                {card && <span className="sr-only">{card.name}</span>}
+                {!card && <span className="sr-only">More products are on the way</span>}
+              </span>
+            </li>
+          ))}
+        </ul>
+      </Reveal>
 
-      <div className="mt-12 flex items-center justify-center gap-2" role="group" aria-label="Choose a product">
-        {PLATFORM.cards.map((card, i) => (
-          <button key={card.id} type="button" aria-label={`Show ${card.name}`} aria-current={i === index ? "true" : undefined} onClick={() => setIndex(i)} className="flex h-6 items-center">
-            <span className={`block h-2 overflow-hidden rounded-full transition-all duration-300 ${i === index ? "w-12 bg-ink-navy/20" : "w-2 bg-ink-navy/30"}`}>
-              {i === index && !halted && <span key={`${i}-${index}`} className="block h-full w-full bg-ink-navy" style={{ transformOrigin: "left", animation: "fill 5s linear both" }} />}
-              {i === index && halted && <span className="block h-full w-full bg-ink-navy" />}
-            </span>
-          </button>
-        ))}
-      </div>
+      <ul className="mt-12 grid gap-5 md:mt-16 md:grid-cols-3">
+        {PLATFORM.cards.map((card, i) => {
+          const live = card.status === "live" && card.href;
+          return (
+            <Reveal as="li" key={card.id} delay={i * 80} className="flex flex-col rounded-[32px] bg-paper p-7 shadow-product ring-1 ring-ink-navy/5">
+              <div className="flex items-start justify-between">
+                <span className="flex size-11 items-center justify-center rounded-xl bg-badge-fill">
+                  <Mark card={card} size="small" />
+                </span>
+                {live ? (
+                  <Link href={card.href!} aria-label={`Explore ${card.name}`} className="flex size-9 items-center justify-center rounded-lg bg-badge-fill transition-colors duration-150 hover:bg-sky">
+                    <ArrowRight className="size-4 -rotate-45" aria-hidden />
+                  </Link>
+                ) : (
+                  <span className="rounded-full bg-badge-fill px-3 py-1 text-sm font-medium">Coming soon</span>
+                )}
+              </div>
+              <h3 className="h-sub mt-8 !text-[1.75rem]">{card.name}</h3>
+              <p className="mt-3 text-base leading-relaxed text-slate-gray sm:text-lg">{card.text}</p>
+              {live && <p className="mt-5 inline-flex w-fit rounded-full bg-sky px-3 py-1 text-sm font-medium">Live now</p>}
+            </Reveal>
+          );
+        })}
+      </ul>
     </section>
   );
 }

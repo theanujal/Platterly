@@ -18,7 +18,7 @@ export function BlogList({ posts }: { posts: PostDoc[] }) {
     <>
       <div role="group" aria-label="Filter posts by topic" className="mb-12 flex flex-wrap justify-center gap-2">
         {tags.map((t) => (
-          <button key={t} type="button" aria-pressed={t === tag} onClick={() => setTag(t)} className={`rounded-full px-4 py-2 text-sm font-medium transition-colors duration-150 ${t === tag ? "bg-ink-navy text-cloud" : "bg-ink-navy/5 hover:bg-ink-navy/10"}`}>
+          <button key={t} type="button" aria-pressed={t === tag} onClick={() => setTag(t)} className={`rounded-full px-4 py-2 text-sm font-medium transition-colors duration-150 ${t === tag ? "bg-ink-navy text-cloud" : "bg-badge-fill ring-1 ring-brand/10 hover:bg-sky"}`}>
             {t}
           </button>
         ))}
@@ -26,7 +26,7 @@ export function BlogList({ posts }: { posts: PostDoc[] }) {
       <ul className="grid gap-6 md:grid-cols-2">
         {shown.map((post, i) => (
           <Reveal as="li" key={post.slug} delay={i * 70} className={i === 0 && tag === "All" ? "md:col-span-2" : ""}>
-            <Link href={`/blog/${post.slug}/`} className="lift group flex h-full flex-col overflow-hidden rounded-[32px] bg-paper hover:shadow-product md:flex-row">
+            <Link href={`/blog/${post.slug}/`} className="lift group flex h-full flex-col overflow-hidden rounded-[32px] bg-paper shadow-product ring-1 ring-ink-navy/5 md:flex-row">
               <div className={`cw-${post.colourway} relative flex min-h-48 items-center justify-center md:min-h-64 ${i === 0 && tag === "All" ? "md:w-[46%]" : "md:w-[38%]"}`}>
                 <span className="flex size-20 items-center justify-center rounded-[26px] bg-paper shadow-product">
                   <Icon name={ICON[post.tags[0]] ?? "book"} className="size-9 text-brand" />
@@ -36,7 +36,7 @@ export function BlogList({ posts }: { posts: PostDoc[] }) {
                 <p className="text-sm text-slate-gray">
                   {post.tags.join(" · ")} · {post.readingMinutes} min read
                 </p>
-                <h2 className="h-sub mt-3 !text-[1.625rem] group-hover:underline group-hover:decoration-1 group-hover:underline-offset-4">{post.title}</h2>
+                <h2 className="h-sub mt-3 !text-[1.625rem]">{post.title}</h2>
                 <p className="mt-3 flex-1 leading-relaxed text-slate-gray">{post.excerpt}</p>
                 <p className="mt-6 text-sm text-slate-gray">
                   {post.author} · {date(post.date)}

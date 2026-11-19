@@ -3,8 +3,8 @@ import type { ReactNode } from "react";
 /** The opening panel of every content page: the same gradient as the product hero, a headline and one line. */
 export function PageHero({ eyebrow, title, children, actions }: { eyebrow?: string; title: string; children?: ReactNode; actions?: ReactNode }) {
   return (
-    <section aria-labelledby="page-title" className="px-3 sm:px-6">
-      <div className="relative isolate overflow-hidden rounded-[28px] px-5 py-20 text-center sm:rounded-[40px] md:py-28" style={{ background: "var(--aurora)" }}>
+    <section aria-labelledby="page-title">
+      <div className="relative isolate overflow-hidden px-5 pb-20 pt-32 text-center md:pb-28 md:pt-44" style={{ background: "var(--aurora)" }}>
         {eyebrow && <p className="eyebrow enter">{eyebrow}</p>}
         <h1 id="page-title" style={{ "--d": "60ms" } as React.CSSProperties} className="h-hero enter mx-auto mt-4 max-w-4xl">
           {title}

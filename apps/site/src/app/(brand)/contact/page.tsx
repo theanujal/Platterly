@@ -34,14 +34,14 @@ export default async function ContactPage() {
       <PageHero eyebrow="Contact us" title="We are here to help">
         <p>Questions, help with your account, or an idea for Caterly by Platterly? Write to us and a person will reply.</p>
       </PageHero>
-      <section aria-label="Ways to reach us" className="mx-auto w-full max-w-[1200px] px-5 pt-20 sm:px-8 md:pt-28">
-        <Reveal as="ul" className="flex flex-wrap justify-center gap-4">
+      <section aria-label="Ways to reach us" className="mx-auto w-full max-w-[1328px] px-5 pt-20 sm:px-8 md:pt-28">
+        <Reveal as="ul" className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {channels.map((c, i) => (
-            <li key={c.title} style={{ "--d": `${i * 90}ms` } as React.CSSProperties} className="rv-child w-full rounded-[24px] bg-paper p-6 shadow-card sm:w-[calc(50%-0.5rem)] lg:w-[17.5rem]">
-              <span className="flex size-11 items-center justify-center rounded-xl bg-accent">
+            <li key={c.title} style={{ "--d": `${i * 90}ms` } as React.CSSProperties} className="rv-child w-full rounded-[24px] bg-paper p-6 shadow-product ring-1 ring-ink-navy/5">
+              <span className="flex size-11 items-center justify-center rounded-xl bg-badge-fill ring-1 ring-brand/15">
                 <c.icon className="size-5" aria-hidden />
               </span>
-              <h2 className="mt-5 text-xl font-medium">{c.title}</h2>
+              <h2 className="h-sub mt-5 !text-[1.5rem]">{c.title}</h2>
               {c.href ? (
                 <a href={c.href} className="mt-1 block break-words text-slate-gray underline-offset-4 hover:underline">
                   {c.value}
@@ -54,10 +54,10 @@ export default async function ContactPage() {
           ))}
         </Reveal>
         {CONTACT.hours.length > 0 && (
-          <div className="mt-4 flex items-start gap-4 rounded-[24px] bg-pebble p-6">
+          <div className="mt-4 flex items-start gap-4 rounded-[24px] bg-badge-fill p-6 ring-1 ring-brand/10">
             <Clock className="mt-1 size-5 shrink-0" aria-hidden />
             <div>
-              <h2 className="text-lg font-medium">Business hours</h2>
+              <h2 className="h-sub !text-[1.25rem]">Business hours</h2>
               <ul className="mt-1 text-slate-gray">
                 {CONTACT.hours.map((h) => (
                   <li key={h}>{h}</li>
@@ -78,7 +78,7 @@ export default async function ContactPage() {
           </div>
         </Reveal>
       </div>
-      <section aria-labelledby="faq" className="mx-auto w-full max-w-[1200px] px-5 pb-24 sm:px-8 md:pb-32">
+      <section aria-labelledby="faq" className="mx-auto w-full max-w-[1328px] px-5 pb-24 sm:px-8 md:pb-32">
         <Reveal className="mx-auto max-w-3xl text-center">
           <h2 id="faq" className="h-section">
             Before you write

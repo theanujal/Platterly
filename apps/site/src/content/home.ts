@@ -31,7 +31,7 @@ export const HOME_SCENE = {
 export const HOME_CHAPTER = {
   label: "Our first product, Caterly by Platterly",
   title: "Meet Caterly by Platterly.",
-  subtitle: "A better way to run your catering business",
+  subtitle: "Caterly keeps your customers, events, menus, orders, kitchen and payments together, from the first enquiry to the final delivery. Your team works from one place, and your customers approve their menu from a simple link, with no login.",
   items: [
     { id: "events", icon: "calendar", title: "Events and calendar", text: "See how busy each day is, with every booked event and order where it belongs, including multi-day events.", card: "calendar", href: "/caterly/#features" },
     { id: "menus", icon: "book", title: "Menus customers approve", text: "Plan each meal, watch the price build, and send a link your customer approves with no login.", card: "approval", href: "/caterly/#features" },

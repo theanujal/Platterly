@@ -16,7 +16,7 @@ export function Voices({ items }: { items: readonly Testimonial[] }) {
   const [lead, ...rest] = items;
   return (
     <section aria-label="What customers say">
-      <div className="mx-auto grid w-full max-w-[1200px] gap-12 px-5 py-20 sm:px-8 md:py-28 lg:grid-cols-[1.3fr_1fr]">
+      <div className="mx-auto grid w-full max-w-[1328px] gap-12 px-5 py-20 sm:px-8 md:py-28 lg:grid-cols-[1.3fr_1fr]">
         <Reveal>
           <blockquote>
             <p className="h-sub !text-[clamp(1.5rem,3vw,2.25rem)] !font-bold !leading-snug">“{lead.quote}”</p>

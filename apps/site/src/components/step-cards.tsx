@@ -1,8 +1,6 @@
-"use client";
-
-import { useState } from "react";
-import { Check } from "lucide-react";
 import { Reveal } from "@/components/reveal";
+import { ScreenPanel } from "@/components/screen-panel";
+import type { UiCardName } from "@/components/ui-cards";
 
 export interface Step {
   title: string;
@@ -10,36 +8,29 @@ export interface Step {
   points: readonly string[];
 }
 
+/** What each card shows: its own colourway, a piece of the real screen, and an icon. Matched to the steps by position. */
+const LOOKS: readonly { way: string; card: UiCardName; crop: string; screen?: { file: string; alt: string } }[] = [
+  { way: "sunrise", card: "orders", crop: "-left-[66%] -top-[110%] w-[330%]", screen: { file: "orders", alt: "The Orders page in Caterly: each order with its customer, event, guests, amount and status" } },
+  { way: "blossom", card: "kitchen", crop: "-left-[66%] -top-[36%] w-[330%]" },
+  { way: "dusk", card: "payment", crop: "-left-[66%] -top-[28%] w-[330%]", screen: { file: "dashboard", alt: "The Caterly dashboard: orders pending, in the kitchen and completed, with pending revenue and order value" } },
+];
+
 /**
- * Calendly's "Book / Prep / Capture / Follow up" row, here three cards. Tall white cards share one row; the one you hover or focus
- * widens (twice the others) and shows its steps; the others fold back to a title and one line. Each card ends in a band
- * of its own colour gradient (full colour on the open card, softer on the others), with no screenshot inside. The first card is open to begin with. Below 1024px every card is open, one under the other.
+ * Three equal cards in one row (one under another below 1024px). Each has a coloured panel at the top holding the real
+ * screen from the product, cropped by the panel's right and lower edges; below it an icon, the title, and one line. Nothing depends on hover,
+ * so touch and keyboard readers see the same thing.
  */
 export function StepCards({ steps }: { steps: readonly Step[] }) {
-  const [active, setActive] = useState(0);
-  const ways = ["sunrise", "blossom", "citrus", "dusk"] as const;
   return (
-    <ol className="mt-14 flex flex-col gap-3 lg:flex-row" onMouseLeave={() => setActive(0)}>
+    <ol className="mt-14 grid gap-5 lg:grid-cols-3 lg:gap-6">
       {steps.map((step, index) => {
-        const on = index === active;
+        const look = LOOKS[index % LOOKS.length];
         return (
-          <Reveal as="li" key={step.title} delay={index * 90} className={`flex min-h-[20rem] flex-col overflow-hidden rounded-[32px] bg-paper transition-[flex-grow,box-shadow] duration-500 ease-calendly lg:min-h-[21rem] lg:basis-0 ${on ? "lg:grow-[2] lg:shadow-product" : "lg:grow"}`}>
-            <div tabIndex={0} onMouseEnter={() => setActive(index)} onFocus={() => setActive(index)} className="flex flex-1 flex-col outline-none focus-visible:ring-2 focus-visible:ring-ink-navy">
-              <div className="p-6 lg:p-7">
-                <h3 className="h-sub !text-[1.5rem] sm:!text-[1.75rem] lg:!text-[1.375rem] xl:!text-[1.5rem] lg:whitespace-nowrap">{step.title}</h3>
-                <p className="mt-3 max-w-sm text-sm leading-relaxed text-slate-gray sm:text-base">{step.text}</p>
-                <ul className={`mt-5 flex flex-col gap-2.5 text-sm transition-[opacity,max-height] duration-500 ease-calendly lg:overflow-hidden ${on ? "lg:max-h-40 lg:opacity-100" : "lg:max-h-0 lg:opacity-0"}`}>
-                  {step.points.map((point) => (
-                    <li key={point} className="flex items-start gap-2.5">
-                      <span className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full bg-sky text-ink-navy">
-                        <Check className="size-3" strokeWidth={3} aria-hidden />
-                      </span>
-                      {point}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-              <div aria-hidden className={`cw-${ways[index % ways.length]} mt-auto h-24 shrink-0 transition-opacity duration-500 ease-calendly ${on ? "" : "lg:opacity-40"}`} />
+          <Reveal as="li" key={step.title} delay={index * 90} className="group flex flex-col rounded-[32px] bg-paper p-3 shadow-product transition-transform duration-300 ease-calendly motion-safe:hover:-translate-y-1">
+            <ScreenPanel name={look.card} way={look.way} screen={look.screen} crop={look.crop} className="h-64 rounded-[24px]" />
+            <div className="flex flex-1 flex-col px-4 pb-5 pt-6 sm:px-5">
+              <h3 className="h-sub !text-[1.75rem]">{step.title}</h3>
+              <p className="mt-2 text-base leading-relaxed text-slate-gray">{step.text}</p>
             </div>
           </Reveal>
         );

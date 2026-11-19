@@ -27,7 +27,7 @@ export default function AboutPage() {
         <p>Platterly builds focused software for food businesses, starting with catering.</p>
       </PageHero>
 
-      <section aria-labelledby="story" className="mx-auto w-full max-w-[1100px] px-5 py-24 sm:px-8 md:py-36">
+      <section aria-labelledby="story" className="mx-auto w-full max-w-[1328px] px-5 py-24 sm:px-8 md:py-36">
         <Reveal>
           <p className="eyebrow">Our story</p>
           <h2 id="story" className="h-section mt-4 max-w-3xl">
@@ -41,8 +41,8 @@ export default function AboutPage() {
       </section>
 
       <section aria-labelledby="build" className="px-3 sm:px-6">
-        <div className="rounded-[28px] bg-pebble px-5 py-20 sm:rounded-[40px] sm:px-10 md:py-28">
-          <div className="mx-auto max-w-[1100px]">
+        <div className="rounded-[28px] bg-badge-fill px-5 py-20 sm:rounded-[40px] sm:px-10 md:py-28">
+          <div className="mx-auto max-w-[1328px]">
             <Reveal>
               <p className="eyebrow">What we build</p>
               <h2 id="build" className="h-section mt-4">
@@ -58,7 +58,7 @@ export default function AboutPage() {
                 </span>
               </Link>
               <div className="flex items-center gap-5 rounded-[28px] border-2 border-dashed border-ink-navy/20 p-8">
-                <span aria-hidden className="flex size-14 shrink-0 items-center justify-center rounded-2xl bg-ink-navy/5 text-2xl text-slate-gray">
+                <span aria-hidden className="flex size-14 shrink-0 items-center justify-center rounded-2xl bg-white/70 ring-1 ring-brand/10 text-2xl text-slate-gray">
                   +
                 </span>
                 <span>
@@ -73,7 +73,7 @@ export default function AboutPage() {
         </div>
       </section>
 
-      <section aria-labelledby="how" className="mx-auto w-full max-w-[1100px] px-5 py-24 sm:px-8 md:py-36">
+      <section aria-labelledby="how" className="mx-auto w-full max-w-[1328px] px-5 py-24 sm:px-8 md:py-36">
         <Reveal>
           <h2 id="how" className="h-section">
             How we work

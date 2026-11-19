@@ -51,8 +51,8 @@ export default async function CateringPage() {
       <JsonLd data={faqLd} />
 
       {/* 01 Hero: a full-width gradient panel and nothing else, like calendly.com's product pages: the product's tile and name, one headline, two buttons */}
-      <section aria-labelledby="hero" className="px-3 sm:px-6">
-        <div className="relative isolate flex min-h-[calc(100vh-108px)] flex-col items-center justify-center overflow-hidden rounded-[28px] px-5 py-24 text-center sm:rounded-[40px]" style={{ background: "var(--aurora)", ...productVars(CATERING_PRODUCT) }}>
+      <section aria-labelledby="hero">
+        <div className="relative isolate flex min-h-[calc(100vh-108px)] flex-col items-center justify-center overflow-hidden px-5 pb-24 pt-32 text-center" style={{ background: "var(--aurora)", ...productVars(CATERING_PRODUCT) }}>
           <p style={d(0)} className="enter inline-flex items-center gap-3 text-xl font-medium">
             <ProductTile product={CATERING_PRODUCT} className="size-9" iconClass="size-5" />
             Caterly by Platterly
@@ -99,7 +99,7 @@ export default async function CateringPage() {
       <Voices items={TESTIMONIALS} />
 
       {/* 05 Use cases */}
-      <section aria-labelledby="usecases" className="mx-auto w-full max-w-[1200px] px-5 py-20 sm:px-8 md:py-28">
+      <section aria-labelledby="usecases" className="mx-auto w-full max-w-[1328px] px-5 py-20 sm:px-8 md:py-28">
         <Reveal className="mx-auto max-w-3xl text-center">
           <h2 id="usecases" className="h-section">
             {CATERING.useCases.title}
@@ -125,7 +125,7 @@ export default async function CateringPage() {
 
       {/* 07 Pricing */}
       <Panel label="pricing-title" id="pricing" className="px-4 py-20 sm:px-10 md:py-28">
-        <div className="mx-auto max-w-[1200px]">
+        <div className="mx-auto max-w-[1328px]">
           <Reveal className="mx-auto flex max-w-3xl flex-col items-center gap-5 text-center">
             <h2 id="pricing-title" className="h-section">
               Simple plans for growing caterers
@@ -179,7 +179,7 @@ export default async function CateringPage() {
       </Panel>
 
       {/* 08 FAQ */}
-      <section aria-labelledby="faq" className="mx-auto w-full max-w-[1200px] px-5 py-24 sm:px-8 md:py-32">
+      <section aria-labelledby="faq" className="mx-auto w-full max-w-[1328px] px-5 py-24 sm:px-8 md:py-32">
         <Reveal className="mx-auto max-w-3xl text-center">
           <h2 id="faq" className="h-section">
             {CATERING.faq.title}
@@ -191,7 +191,7 @@ export default async function CateringPage() {
       </section>
 
       {/* 09 The Platterly platform: the products, as on calendly.com's product pages */}
-      <section aria-labelledby="platform" className="mx-auto w-full max-w-[1200px] px-5 pb-24 sm:px-8 md:pb-32">
+      <section aria-labelledby="platform" className="mx-auto w-full max-w-[1328px] px-5 pb-24 sm:px-8 md:pb-32">
         <Reveal className="mx-auto max-w-3xl text-center">
           <h2 id="platform" className="h-section">
             The Platterly platform
