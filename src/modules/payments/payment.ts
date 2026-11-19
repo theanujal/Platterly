@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { audit } from "@/lib/audit/audit";
 import { confirmedPaidForOrder, nextInvoiceNumber, syncInvoiceStatuses } from "@/modules/invoices/invoice";
 import { PAYMENT_BLOCKED_TEXT, customerHasApproved, derivePaymentState, round2 } from "./payment-math";
+import { longDate } from "@/modules/invoices/invoice-format";
 import type { PaymentMethod, PaymentSource, PaymentType } from "@/generated/prisma/enums";
 
 export class PaymentError extends Error {}
@@ -298,7 +299,7 @@ export async function issueReceipt(organizationId: string, paymentId: string) {
         create: [
           {
             description: `${TYPE_LABEL[payment.type]} for order ${payment.order.orderNumber ?? "your order"}`,
-            detail: `${METHOD_LABEL[payment.method]}, ${payment.receivedAt.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" })}`,
+            detail: `${METHOD_LABEL[payment.method]}, ${longDate(payment.receivedAt)}`,
             quantity: 1,
             rate: amount,
             amount,

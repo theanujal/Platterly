@@ -193,6 +193,13 @@ describe("recording payments", () => {
     expect(await prisma.payment.count({ where: { organizationId: org.id } })).toBe(1);
   });
 
+  it("a receipt for a payment at 01:00 IST carries that day's date (#120)", async () => {
+    const { org, order } = await makeOrderWithTotal(10000);
+    const payment = await recordPayment({ organizationId: org.id, orderId: order.id, amount: 1000, type: "ADVANCE", method: "CASH", receivedAt: new Date("2026-11-30T19:30:00Z") });
+    const item = await prisma.invoiceItem.findFirstOrThrow({ where: { invoice: { receiptForPaymentId: payment.id } } });
+    expect(item.detail).toContain("1 Dec 2026");
+  });
+
   it("another tenant cannot touch the payment or the order", async () => {
     const a = await makeOrderWithTotal(10000);
     const b = await makeOrderWithTotal(10000);

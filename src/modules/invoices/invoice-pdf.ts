@@ -1,7 +1,7 @@
 import "server-only";
 import { jsPDF } from "jspdf";
 import type { InvoiceDocument } from "./invoice-document";
-import { inrPdf } from "./invoice-format";
+import { inrPdf, longDate } from "./invoice-format";
 
 // The design system's colours (globals.css), as RGB for the PDF.
 type Rgb = [number, number, number];
@@ -27,7 +27,6 @@ const STATUS_COLOR: Record<string, { fg: Rgb; bg: Rgb }> = {
 };
 
 // The standard PDF font has no ₹ glyph, so INR is written "Rs.".
-const date = (d: Date) => d.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
 
 const LEFT = 40;
 const RIGHT = 555;
@@ -97,8 +96,8 @@ export function renderInvoicePdf(invoice: InvoiceDocument): Uint8Array {
   color(MUTED);
   const meta: [string, string][] = [
     [invoice.type === "RECEIPT" ? "Receipt #:" : "Invoice #:", invoice.number],
-    ["Date:", date(invoice.issueDate)],
-    ...(invoice.type === "INVOICE" ? ([["Due Date:", invoice.dueDate ? date(invoice.dueDate) : "On receipt"]] as [string, string][]) : []),
+    ["Date:", longDate(invoice.issueDate)],
+    ...(invoice.type === "INVOICE" ? ([["Due Date:", invoice.dueDate ? longDate(invoice.dueDate) : "On receipt"]] as [string, string][]) : []),
   ];
   meta.forEach(([label, value], i) => {
     const my = y + 28 + i * 14;
@@ -157,7 +156,7 @@ export function renderInvoicePdf(invoice: InvoiceDocument): Uint8Array {
 
   // --- Event details ---
   ensure(70);
-  const eventDate = invoice.event.start.toDateString() === invoice.event.end.toDateString() ? date(invoice.event.start) : `${date(invoice.event.start)} - ${date(invoice.event.end)}`;
+  const eventDate = invoice.event.start.toDateString() === invoice.event.end.toDateString() ? longDate(invoice.event.start) : `${longDate(invoice.event.start)} - ${longDate(invoice.event.end)}`;
   const cells: [string, string][] = [
     ["Event Type", invoice.event.type ?? "-"],
     ["Event Date", eventDate],
