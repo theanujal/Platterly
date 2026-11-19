@@ -7,6 +7,7 @@ import { prisma } from "@/lib/db";
 import { PLATFORM_PROVIDER_ID } from "@/lib/platform/config";
 import { consumePendingMembership } from "@/modules/platform-link/pending";
 import { AuthLayout } from "../_components/auth-layout";
+import { SignOutButton } from "../_components/sign-out-button";
 
 export const metadata: Metadata = { title: "Setting up your account — Caterly", robots: { index: false, follow: false } };
 export const dynamic = "force-dynamic";
@@ -37,8 +38,15 @@ export default async function SettingUpPage({ searchParams }: { searchParams?: P
     <AuthLayout>
       {!slow && <meta httpEquiv="refresh" content={`3;url=/kitchenlogin/setting-up?n=${looks + 1}`} />}
       <h1>Setting up your account</h1>
-      <p role="status">{slow ? "This is taking longer than usual. Please try again in a moment, or contact Platterly support if it keeps happening." : "Just a moment while we finish creating your business…"}</p>
+      <p role="status">
+        {slow
+          ? // A team invitee is a team member, never an Admin, so no business is made for them. If their invitation was cancelled or ran out, or was sent to another email address,
+            // they would wait here for nothing: say what happened and what to do.
+            "This is taking longer than usual. If you were invited to join a team, the invitation may have been cancelled, may have expired, or was sent to a different email address than the one you signed up with. Ask your Business Admin to send you a new invitation. Otherwise try again in a moment, or contact Platterly support if it keeps happening."
+          : "Just a moment while we finish creating your business…"}
+      </p>
       {slow && <Link href="/kitchenlogin/setting-up">Try again</Link>}
+      {slow && <SignOutButton />}
     </AuthLayout>
   );
 }
