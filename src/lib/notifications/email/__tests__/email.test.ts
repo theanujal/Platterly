@@ -48,6 +48,7 @@ describe("sendEmail (ZeptoMail)", () => {
     const [, init] = fetchMock.mock.calls[0];
     expect(init.headers.authorization).toBe("Zoho-enczapikey abc");
     expect(JSON.parse(init.body).to[0].email_address.address).toBe("a@b.test");
+    expect(init.signal).toBeInstanceOf(AbortSignal); // a hung ZeptoMail gives up instead of holding the cron (#121)
   });
 
   it("mail guard: a real send to anyone but AJ is skipped and nothing is fetched; AJ's address and the local sink still work", async () => {

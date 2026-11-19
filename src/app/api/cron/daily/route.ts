@@ -30,6 +30,19 @@ async function run(request: Request) {
   if (!process.env.CRON_SECRET) return new NextResponse("Not found", { status: 404 });
   if (!authorised(request)) return new NextResponse("Unauthorized", { status: 401 });
 
+  // One run at a time: a second run while one is busy would send the same messages again (#121). The transaction only holds the
+  // lock; the jobs use the global client. pg_try_advisory_xact_lock is released on commit, rollback or connection loss, so no `finally`.
+  return prisma.$transaction(
+    async (tx) => {
+      const [{ locked }] = await tx.$queryRaw<{ locked: boolean }[]>`SELECT pg_try_advisory_xact_lock(hashtextextended('catering-cron-daily', 0)) AS locked`;
+      if (!locked) return NextResponse.json({ busy: true });
+      return NextResponse.json(await runJobs());
+    },
+    { maxWait: 5_000, timeout: 15 * 60_000 },
+  );
+}
+
+async function runJobs() {
   const now = new Date();
   const notifications = await runDueNotifications(now);
   let recurringExpenses = 0;
@@ -54,7 +67,7 @@ async function run(request: Request) {
     console.error("[library] scan failed:", error);
     return { ran: false, scanned: 0, candidates: 0 };
   });
-  return NextResponse.json({ ranAt: now.toISOString(), opsLink, platformLink, platformPull, notifications, recurringExpenses, visitsScrubbed, library: libraryScan });
+  return { ranAt: now.toISOString(), opsLink, platformLink, platformPull, notifications, recurringExpenses, visitsScrubbed, library: libraryScan };
 }
 
 export const GET = run;

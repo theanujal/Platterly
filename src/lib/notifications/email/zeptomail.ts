@@ -44,6 +44,8 @@ export async function sendEmail(params: SendEmailParams): Promise<SendEmailResul
         subject: params.subject,
         htmlbody: params.html,
       }),
+      // A hung ZeptoMail must not hold the cron run (and its lock) for ever (#121).
+      signal: AbortSignal.timeout(15_000),
     });
     const body = (await response.json().catch(() => null)) as ZeptoBody | null;
     if (!response.ok) return { status: "failed", reason: `ZeptoMail ${response.status}: ${rejectionReason(body)}` };
