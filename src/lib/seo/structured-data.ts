@@ -20,6 +20,11 @@ export interface RestaurantJsonLdInput {
   menuItems?: { name: string; description?: string | null; price?: number }[];
 }
 
+/** The JSON for a `<script type="application/ld+json">`. A kitchen's own text is in it, so `<` is escaped: `</script>` in a name can't end the tag and run code. */
+export function jsonLdScript(data: Record<string, unknown>): string {
+  return JSON.stringify(data).replace(/</g, "\\u003c");
+}
+
 export function buildRestaurantJsonLd(input: RestaurantJsonLdInput): Record<string, unknown> {
   const addressEntries = input.address
     ? Object.fromEntries(Object.entries(input.address).filter(([, v]) => v))

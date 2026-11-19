@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { getPublishedTenantBySlug } from "@/modules/tenants/tenant";
 import { listEventTypes } from "@/modules/events/event-type";
 import { canonicalUrl } from "@/lib/seo/canonical";
-import { buildRestaurantJsonLd } from "@/lib/seo/structured-data";
+import { buildRestaurantJsonLd, jsonLdScript } from "@/lib/seo/structured-data";
 import { EventDetailsForm } from "./_components/event-details-form";
 import { PublicShell } from "@/components/public/public-shell";
 import { StorefrontContact } from "./_components/storefront-contact";
@@ -76,7 +76,7 @@ export default async function TenantStorefrontPage({ params }: StorefrontPagePro
       title="Plan Your Event"
       subtitle="Tell us a few details and we'll help you find the right menu."
     >
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLdScript(jsonLd) }} />
 
       <VisitBeacon slug={tenantSlug} />
       <StorefrontContact organization={organization} />

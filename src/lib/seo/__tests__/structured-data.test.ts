@@ -1,5 +1,14 @@
 import { describe, it, expect } from "vitest";
-import { buildRestaurantJsonLd } from "@/lib/seo/structured-data";
+import { buildRestaurantJsonLd, jsonLdScript } from "@/lib/seo/structured-data";
+
+describe("jsonLdScript", () => {
+  it("a kitchen's text cannot close the JSON-LD script tag, and the JSON still reads back the same", () => {
+    const data = buildRestaurantJsonLd({ name: "Spice Route", url: "https://platterly.in/spiceroute", description: "Caterers.</script><script>alert(1)</script>" });
+    const html = jsonLdScript(data);
+    expect(html).not.toContain("<");
+    expect(JSON.parse(html)).toEqual(data);
+  });
+});
 
 describe("buildRestaurantJsonLd (Chunk 8 Group 8.3)", () => {
   it("builds the minimal Restaurant shape with only name/url", () => {
