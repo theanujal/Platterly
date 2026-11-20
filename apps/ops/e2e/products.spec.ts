@@ -53,7 +53,9 @@ test("the Products page: starting data, add an upcoming product, upload a pictur
   await expect(page.getByRole("heading", { name: "Products", level: 1 })).toBeVisible();
 
   // The starting data: Caterly has its line and picture; Rivo is shown; the other three are kept hidden.
-  const caterly = page.locator("section", { has: page.getByRole("heading", { name: "Caterly", level: 3 }) });
+  // The catering product's name is whatever it was registered as ("Caterly" on live, "Catering" in some local databases).
+  const caterlyName = (await pool.query("select name from product where key = 'catering'")).rows[0].name;
+  const caterly = page.locator("section", { has: page.getByRole("heading", { name: caterlyName, exact: true, level: 3 }) });
   await expect(caterly.getByLabel("One line under the name")).toHaveValue("Catering business platform");
   await expect(caterly).toContainText("Shown on the Account");
   const rivo = page.locator("section", { has: page.getByRole("heading", { name: "Rivo", level: 3 }) });

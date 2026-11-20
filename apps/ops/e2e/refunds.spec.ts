@@ -93,5 +93,5 @@ test("the Refunds page lists open requests; a decline is recorded and emailed; a
   await expect(decided).toContainText("Declined");
   await expect(decided).toContainText("Past our refund policy");
   expect((await pool.query("select status, \"rejectionNote\" from refund_request where id = $1", [REQ_A])).rows[0]).toEqual({ status: "REJECTED", rejectionNote: "Past our refund policy" });
-  expect((await pool.query("select count(*) from message_log where \"businessId\" = $1 and template = 'refund_declined'", [BIZ])).rows[0].count).toBe("1");
+  expect((await pool.query("select count(*) from message_log where \"businessId\" = $1 and template = 'refund_declined' and channel = 'EMAIL'", [BIZ])).rows[0].count).toBe("1"); // a WhatsApp copy writes its own row
 });

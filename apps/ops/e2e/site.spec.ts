@@ -62,6 +62,7 @@ test("staff edit the notice bar, add an update and a post with categories, and s
   await expect(page.getByRole("heading", { name: "Website" })).toBeVisible();
 
   await page.getByRole("link", { name: "Notice bar" }).click();
+  await page.getByRole("button", { name: "Edit" }).click();
   await page.getByLabel("Message").fill("");
   await page.getByLabel("Show the bar").check();
   await page.getByRole("button", { name: "Save" }).click();

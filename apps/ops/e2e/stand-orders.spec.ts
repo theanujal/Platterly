@@ -53,6 +53,7 @@ test("Stand orders: set the price, find the paid order, download the A6 print fi
   await expect(page.getByText("1 to do")).toBeVisible();
 
   // The price of one stand (before GST) is set here.
+  await page.getByRole("button", { name: "Edit" }).click();
   await page.getByLabel("Price per stand (₹, before GST)").fill("450");
   await page.getByLabel("GST (%)").fill("18");
   await page.getByLabel("HSN / SAC code (optional)").fill("392690");
@@ -62,7 +63,7 @@ test("Stand orders: set the price, find the paid order, download the A6 print fi
   expect(Number(price.rows[0].standPrice)).toBe(450);
   expect(price.rows[0].standHsnCode).toBe("392690");
   await page.reload();
-  await expect(page.getByLabel("HSN / SAC code (optional)")).toHaveValue("392690"); // it is remembered
+  await expect(page.getByText("392690", { exact: true })).toBeVisible(); // it is remembered (shown read-only)
 
   await expect(page.getByRole("row", { name: /E2E Stand Kitchen/ })).toContainText("₹1,180.00");
   await page.getByRole("link", { name: /E2E-/ }).click();

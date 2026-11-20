@@ -57,7 +57,8 @@ test("staff sign in, register a product, receive a signed sign-up, read its noti
   await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible();
 
   await page.getByRole("link", { name: "Settings" }).first().click();
-  await page.getByRole("link", { name: /Products/ }).click();
+  // The sidebar has its own "Products" page (the cards); the register form is the Settings card.
+  await page.getByRole("link", { name: /Add a product/ }).click();
   await page.getByText("Advanced").first().click();
   await page.getByLabel("Key").fill(PRODUCT);
   await page.getByLabel("Name").fill("E2E Product");
@@ -71,7 +72,7 @@ test("staff sign in, register a product, receive a signed sign-up, read its noti
   const eventId = `evt_${randomBytes(16).toString("hex")}`;
   const body = JSON.stringify({ eventId, productKey: PRODUCT, businessId: `biz_${randomBytes(16).toString("hex")}`, occurredAt: new Date().toISOString(), type: "business.signed_up", data: { businessName: BUSINESS, ownerName: "Asha", ownerEmail: "asha@e2e.example" } });
   const ts = Math.floor(Date.now() / 1000);
-  const headers = { "content-type": "application/json", "x-platterly-timestamp": String(ts), "x-platterly-signature": `v1=${createHmac("sha256", inbound).update(`${ts}.${body}`).digest("hex")}`, "x-platterly-event-id": eventId, "x-platterly-contract": "1" };
+  const headers = { "content-type": "application/json", "x-platterly-timestamp": String(ts), "x-platterly-signature": `v2=${createHmac("sha256", inbound).update(`${ts}.POST./api/products/events.${body}`).digest("hex")}`, "x-platterly-event-id": eventId, "x-platterly-contract": "1" };
   expect((await request.post("/api/products/events", { data: body, headers })).status()).toBe(200);
   expect((await request.post("/api/products/events", { data: body, headers })).status()).toBe(200); // a retry is accepted once, applied once
 
@@ -124,6 +125,7 @@ test("staff create a plan from a product's manifest, assign it to a business and
     await expect(page.getByRole("heading", { name: "E2E Pro" })).toBeVisible();
 
     // A bad value is refused with a plain message (a trial plan needs a length; p[role=alert] avoids Next's route announcer).
+    await page.getByRole("button", { name: "Edit" }).click();
     await page.getByLabel("This is the trial plan").check();
     await page.getByRole("button", { name: "Save plan" }).click();
     await expect(page.locator("p[role=alert]")).toContainText("trial length");
@@ -192,6 +194,7 @@ test("staff feature one plan for the website: a replacement note, a Featured bad
 
     // Making the featured plan a trial disables the box and clears the flag on save.
     await page.getByRole("link", { name: "E2E Plus" }).click();
+    await page.getByRole("button", { name: "Edit" }).click();
     await page.getByLabel("This is the trial plan").check();
     await expect(featuredBox("E2E Plus")).toBeDisabled();
     await expect(page.getByTestId("featured-hint")).toContainText("trial plan cannot be featured");
@@ -219,6 +222,7 @@ test("staff edit the seller's billing details: a bad GSTIN is refused, a good on
     await page.getByRole("link", { name: "Billing" }).first().click();
     await expect(page.getByRole("heading", { name: "Billing", exact: true })).toBeVisible();
     await expect(page.getByText("Payments received")).toBeVisible();
+    await page.getByRole("button", { name: "Edit" }).click();
     await page.getByLabel("Legal name").fill("E2E Platterly Pvt Ltd");
     await page.getByLabel("GSTIN").fill("not-a-gstin");
     await page.getByRole("button", { name: "Save billing details" }).click();
@@ -229,9 +233,8 @@ test("staff edit the seller's billing details: a bad GSTIN is refused, a good on
     await page.getByRole("button", { name: "Save billing details" }).click();
     await expect(page.getByRole("status").filter({ hasText: "Saved." })).toBeVisible();
     await page.reload();
-    await expect(page.getByLabel("Legal name")).toHaveValue("E2E Platterly Pvt Ltd");
-    // Numbering follows the product: the preview uses each product's own prefix (catering keeps FP), not the fallback just saved.
-    await expect(page.getByText(/Catering: next invoice/)).toContainText("FPEB");
+    // Saved details show read-only; the invoice-number preview moved to each product's Settings page.
+    await expect(page.getByText("E2E Platterly Pvt Ltd")).toBeVisible();
   } finally {
     const cols = ["legalName", "addressLine1", "addressLine2", "city", "state", "stateCode", "postalCode", "country", "gstin", "pan", "sacCode", "invoicePrefix", "email", "phone", "website", "invoiceNote"];
     await pool.query(`update platform_billing_profile set ${cols.map((c, i) => `"${c}" = $${i + 1}`).join(", ")} where id = 'platform'`, cols.map((c) => before[c]));
@@ -254,6 +257,7 @@ test("staff set a sidebar notice: a bad link is refused, a good one is saved and
 
     await chooseProduct(page, "E2E Notice Product");
     await page.getByRole("link", { name: "Sidebar notice" }).first().click();
+    await page.getByRole("button", { name: "Edit" }).click();
     const form = page.locator("form").filter({ hasText: "E2E Notice Product sidebar notice" });
     await form.getByLabel("Show the notice").check();
     await form.getByLabel("Title").fill("Diwali offer");
@@ -264,7 +268,8 @@ test("staff set a sidebar notice: a bad link is refused, a good one is saved and
 
     await form.getByLabel("Button link").fill("/subscribe");
     await form.getByRole("button", { name: "Save and send to every business" }).click();
-    await expect(form.getByRole("status")).toContainText("Saved and sent to 1 of 1 business");
+    // A good save closes the form; the answer shows under the read-only notice.
+    await expect(page.locator("p[role=status]")).toContainText("Saved and sent to 1 of 1 business");
     // This test product has placeholder secrets and no server, so delivery cannot succeed; the screen must say so rather than hide it.
     await expect(page.getByText("1 failed")).toBeVisible();
     const queued = await pool.query("select payload from outbound_command where \"productKey\" = $1 and type = 'notice.set'", [key]);
