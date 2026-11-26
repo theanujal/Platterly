@@ -33,6 +33,7 @@ const nextConfig: NextConfig = {
     // Lets `forbidden()` render src/app/forbidden.tsx (a "no access" page) instead of a 500.
     authInterrupts: true,
     serverActions: { bodySizeLimit: "5mb" },
+    agentUpgrade: "security",
   },
   // Default "bottom-left" sits exactly on top of the new sidebar's footer
   // (Sign out button) — moved out of the way rather than disabling the dev
